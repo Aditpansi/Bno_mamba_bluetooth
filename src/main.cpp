@@ -5,12 +5,16 @@
 #include <utility/imumaths.h>
 #include <EEPROM.h>
 #include <SPI.h>
+#include <BluetoothSerial.h>
 
 float declinationAngle = -1.20; // Magnetic declination angle
 
 #define BNO055_SAMPLERATE_DELAY_MS (100)
 
 Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28); // Initialize the sensor with ID 55 and I2C address 0x28
+
+BluetoothSerial SerialBT;
+bool sendData = false;
 
 /**************************/
 /*
@@ -74,9 +78,11 @@ void displayCalStatus(void)
 
     /* The data should be ignored until the system calibration is > 0 */
     Serial.print("\t");
+    SerialBT.print("\t");
     if (!system)
     {
         Serial.print("! ");
+        SerialBT.print("! ");
     }
 
     /* Display the individual values */
@@ -89,6 +95,15 @@ void displayCalStatus(void)
     Serial.print(" M:");
     Serial.print(mag, DEC);
 
+    SerialBT.print("Sys:");
+    SerialBT.print(system, DEC);
+    SerialBT.print(" G:");
+    SerialBT.print(gyro, DEC);
+    SerialBT.print(" A:");
+    SerialBT.print(accel, DEC);
+    SerialBT.print(" M:");
+    SerialBT.print(mag, DEC);
+
     Serial.print(">Sys:");
     Serial.println(system, DEC);
 
@@ -100,6 +115,18 @@ void displayCalStatus(void)
 
     Serial.print(">M:");
     Serial.println(mag, DEC);
+
+    SerialBT.print(">Sys:");
+    SerialBT.println(system, DEC);
+
+    SerialBT.print("> G:");
+    SerialBT.println(gyro, DEC);
+
+    SerialBT.print(">A:");
+    SerialBT.println(accel, DEC);
+
+    SerialBT.print(">M:");
+    SerialBT.println(mag, DEC);
 }
 
 /**************************/
@@ -142,6 +169,7 @@ void displaySensorOffsets(const adafruit_bno055_offsets_t &calibData)
 void setup(void)
 {
     Serial.begin(115200);
+    SerialBT.begin("BNO055_Sensor"); // Bluetooth device name
     delay(1000);
     Serial.println("Orientation Sensor Test"); Serial.println("");
 
@@ -267,31 +295,44 @@ void setup(void)
 }
 
 void loop() {
-    /* Get a new sensor event */
-    sensors_event_t event;
-    bno.getEvent(&event);
+    if (SerialBT.available()) {
+        char input = SerialBT.read();
+        if (input == '1') {
+            sendData = true;
+            Serial.println("Starting to send data");
+        } else if (input == '0') {
+            sendData = false;
+            Serial.println("Stopping data transmission");
+        }
+    }
 
-    /* Correct the yaw value (heading) for declination */
-    float yaw = (event.orientation.x + declinationAngle + 90) * -1;
+    if (sendData) {
+        /* Get a new sensor event */
+        sensors_event_t event;
+        bno.getEvent(&event);
 
-    /* Ensure yaw stays within 0-360 degrees */
-    if (yaw < 0) yaw += 360;
-    if (yaw > 360) yaw -= 360;
+        /* Correct the yaw value (heading) for declination */
+        float yaw = (event.orientation.x + declinationAngle + 90) * -1;
 
-    /* Display the floating point data with declination adjustment */
-    Serial.print(">roll:");
-    Serial.println(event.orientation.z * -1, 4);
-    Serial.print(">pitch:");
-    Serial.println(event.orientation.y, 4);
-    Serial.print(">yaw with declination:");
-    Serial.println(yaw, 4);
+        /* Ensure yaw stays within 0-360 degrees */
+        if (yaw < 0) yaw += 360;
+        if (yaw > 360) yaw -= 360;
 
-    /* Optional: Display calibration status */
-    displayCalStatus();
+        /* Display the floating point data with declination adjustment */
+        SerialBT.print(">roll:");
+        SerialBT.println(event.orientation.z * -1, 4);
+        SerialBT.print(">pitch:");
+        SerialBT.println(event.orientation.y, 4);
+        SerialBT.print(">yaw with declination:");
+        SerialBT.println(yaw, 4);
 
-    /* New line for the next sample */
-    Serial.println("");
+        /* Optional: Display calibration status */
+        displayCalStatus();
 
-    /* Wait the specified delay before requesting new data */
-    delay(BNO055_SAMPLERATE_DELAY_MS);
+        /* New line for the next sample */
+        SerialBT.println("");
+
+        /* Wait the specified delay before requesting new data */
+        delay(BNO055_SAMPLERATE_DELAY_MS);
+    }
 }
